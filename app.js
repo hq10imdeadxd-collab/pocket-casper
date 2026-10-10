@@ -2,19 +2,29 @@
 import { WebWorkerMLCEngine, prebuiltAppConfig, hasModelInCache, deleteModelAllInfoInCache } from "./vendor/web-llm.js";
 
 const $ = (s) => document.querySelector(s);
-const VERSION = "1.0.0";
+const VERSION = "1.1.0";
+
+// iOS gives a web page far less memory than an app (Safari kills the tab above roughly 1.5 GB, which shows up as
+// "A problem repeatedly occurred"). On iOS: a smaller context window (less memory for the conversation) and
+// the light models first.
+const IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const CONTEXT_TOKENS = IS_IOS ? 2048 : 4096;
+const REPLY_TOKENS = IS_IOS ? 600 : 1024;
 
 // ---------------------------------------------------------------- models (curated for an iPhone's memory)
 // Measured in a browser on the PC's RTX 3060 (GPU otherwise idle): Llama 3.2 1B 109 tok/s, Qwen 3 1.7B 61,
 // Llama 3.2 3B 55, Qwen 3.5 2B 50. A phone GPU has roughly 1/6 of that memory bandwidth, so expect ~8–20 tok/s.
-// Left out: Qwen 3.5 0.8B (too weak: rambled off-topic in tests) and Gemma 3 1B (WebLLM 0.2.85's config for it
-// fails to load: sliding-window conflict).
+// Memory (WebLLM's estimate at a 4K context): Llama 1B 0.9 GB, Qwen 3 1.7B 2.0 GB, Qwen 3.5 2B and Llama 3B
+// 2.2 GB, Qwen 3.5 4B 3.9 GB. On an iPhone 16, Qwen 3.5 2B crashed Safari ("A problem repeatedly occurred").
+// Left out: Qwen 3.5 0.8B (too weak: rambled off-topic in tests), Qwen 3 0.6B (needs more memory than Llama 1B)
+// and Gemma 3 1B (WebLLM 0.2.85's config for it fails to load: sliding-window conflict).
 const MODELS = [
-  { key: "qwen35-2b", base: "Qwen3.5-2B", name: "Qwen 3.5 · 2B", note: "Newest and the best balance for an iPhone", rec: true },
-  { key: "llama32-3b", base: "Llama-3.2-3B-Instruct", name: "Llama 3.2 · 3B", note: "Natural, friendly writer" },
-  { key: "qwen3-1.7b", base: "Qwen3-1.7B", name: "Qwen 3 · 1.7B", note: "Quick, good at reasoning and maths", think: true },
-  { key: "llama32-1b", base: "Llama-3.2-1B-Instruct", name: "Llama 3.2 · 1B", note: "Fastest and lightest; simpler answers" },
-  { key: "qwen35-4b", base: "Qwen3.5-4B", name: "Qwen 3.5 · 4B", note: "Smartest, but may be too big for the phone's memory" },
+  { key: "llama32-1b", base: "Llama-3.2-1B-Instruct", name: "Llama 3.2 · 1B", note: "Lightest and fastest: the one that fits an iPhone best", rec: true },
+  { key: "qwen3-1.7b", base: "Qwen3-1.7B", name: "Qwen 3 · 1.7B", note: "Smarter, can think first. Close other apps before using it", think: true, big: true },
+  { key: "qwen35-2b", base: "Qwen3.5-2B", name: "Qwen 3.5 · 2B", note: "Newest, but crashed on an iPhone 16 (too little memory for web apps)", big: true },
+  { key: "llama32-3b", base: "Llama-3.2-3B-Instruct", name: "Llama 3.2 · 3B", note: "Natural writer; likely too big for an iPhone", big: true },
+  { key: "qwen35-4b", base: "Qwen3.5-4B", name: "Qwen 3.5 · 4B", note: "Smartest; too big for phones (computers only)", big: true },
 ];
 let f16 = true;  // whether the GPU supports 16-bit floats (faster, smaller); otherwise use the f32 builds
 const modelId = (m) => `${m.base}-${f16 ? "q4f16_1" : "q4f32_1"}-MLC`;
@@ -70,7 +80,9 @@ async function loadModel(m) {
             if (p.progress >= 1) status(null); else status(progressText(p.text, loadingCached), p.progress);
           } });
       }
-      await engine.reload(id);
+      markRisky("load", m);  // if Safari kills the page now, the next start knows why (see start())
+      await engine.reload(id, IS_IOS ? { context_window_size: CONTEXT_TOKENS } : undefined);
+      clearRisky();
       loadedId = id;
       settings.model = m.key;
       save("pc.settings", settings);
@@ -82,6 +94,7 @@ async function loadModel(m) {
       }
     } catch (e) {
       console.error(e);
+      clearRisky();
       loadedId = null;
       setModelStatus("error", m.name);
       status(friendlyError(e));
@@ -93,6 +106,14 @@ async function loadModel(m) {
   })();
   return loading;
 }
+
+// ---------------------------------------------------------------- crash guard
+// When a page uses too much memory, iOS kills it and Safari reloads it; no JavaScript runs to report it. So we
+// note what we're about to do, and if the next start finds that note, the last attempt crashed. This also stops
+// the crash loop that would come from loading the same model again automatically.
+function markRisky(what, m) { save("pc.inflight", { what, model: m.key, at: Date.now() }); }
+function clearRisky() { try { localStorage.removeItem("pc.inflight"); } catch (e) { /* storage blocked */ } }
+const crashes = load("pc.crashes", {});  // model key -> times it crashed the page
 
 function progressText(text, cached) {
   // WebLLM reports e.g. "Fetching param cache[12/38]: 640MB fetched. 34% completed, 21 secs elapsed..."
@@ -175,7 +196,6 @@ function scrollDown(force) {
 }
 
 // ---------------------------------------------------------------- sending
-const CONTEXT_TOKENS = 4096, REPLY_TOKENS = 1024;
 const approxTokens = (s) => Math.ceil((s || "").length / 3.5) + 4;
 
 function promptMessages() {
@@ -216,6 +236,7 @@ async function send(text) {
   try {
     await loadModel(m);
     const started = performance.now();
+    markRisky("reply", m);  // generating needs extra memory too
     const stream = await engine.chat.completions.create({
       messages: promptMessages(), stream: true, temperature: settings.temp, max_tokens: REPLY_TOKENS,
       stream_options: { include_usage: true },
@@ -229,6 +250,7 @@ async function send(text) {
       const now = performance.now();
       if (now - lastPaint > 60) { fillBot(el, bot.content, null, true); scrollDown(); lastPaint = now; }
     }
+    clearRisky();
     const secs = (performance.now() - started) / 1000;
     const tps = usage?.extra?.decode_tokens_per_s;
     bot.stats = `${secs.toFixed(1)}s` + (tps ? ` · ${tps.toFixed(1)} tok/s` : "");
@@ -237,6 +259,7 @@ async function send(text) {
     fillBot(el, bot.content, bot.stats, false);
   } catch (e) {
     console.error(e);
+    clearRisky();
     const err = { role: "assistant", error: true, content: friendlyError(e) };
     current.messages.push(err);
     el.replaceWith(renderMessage(err));
@@ -335,12 +358,17 @@ async function renderModels() {
     const card = document.createElement("div");
     card.className = "model" + (isCurrent ? " current" : "");
     card.innerHTML = `<div class="model-top"><b></b>${m.rec ? '<span class="tag rec">Recommended</span>' : ""}` +
-      `${cached ? '<span class="tag">Downloaded</span>' : ""}</div><small class="note"></small><small class="size"></small>` +
+      `${cached ? '<span class="tag">Downloaded</span>' : ""}${IS_IOS && m.big ? '<span class="tag warn">May crash</span>' : ""}</div>` +
+      `<small class="note"></small><small class="size"></small><small class="crashed"></small>` +
       `<div class="model-actions"></div>`;
     card.querySelector("b").textContent = m.name;
     card.querySelector(".note").textContent = m.note;
     const sizeEl = card.querySelector(".size");
-    modelSize(m).then((b) => { if (b) sizeEl.textContent = `${cached ? "Uses" : "Download"} ${gb(b)}`; });
+    const mem = record(m).vram_required_MB * (IS_IOS ? 0.9 : 1);  // a bit less with the iPhone's 2K context
+    modelSize(m).then((b) => {
+      sizeEl.textContent = (b ? `${cached ? "Stored" : "Download"}: ${gb(b)} · ` : "") + `needs about ${(mem / 1000).toFixed(1)} GB of memory`;
+    });
+    if (crashes[m.key]) card.querySelector(".crashed").textContent = `Crashed on this phone ${crashes[m.key]}×`;
     const actions = card.querySelector(".model-actions");
     const use = document.createElement("button");
     use.className = "btn" + (isCurrent && loadedId === id ? "" : " primary");
@@ -451,15 +479,37 @@ async function start() {
   if (!adapter) return noWebGPU("Couldn't access the GPU.");
   f16 = adapter.features.has("shader-f16");
 
+  // Did the last load or reply crash the page? (See markRisky.)
+  const crashed = load("pc.inflight", null);
+  clearRisky();
+  if (crashed && Date.now() - crashed.at < 30 * 60 * 1000) {
+    crashes[crashed.model] = (crashes[crashed.model] || 0) + 1;
+    save("pc.crashes", crashes);
+    const cm = MODELS.find((x) => x.key === crashed.model);
+    showCrash(cm);
+  }
+
   const m = MODELS.find((x) => x.key === settings.model && record(x));
   if (!m) {
     setModelStatus("", "No model");
     showSetup();
     return;
   }
+  // The model loads on the first message, not at start: if it's too big for this phone, the app still opens.
   const cached = await hasModelInCache(modelId(m)).catch(() => false);
   setModelStatus(cached ? "" : "error", m.name);
-  if (cached) loadModel(m).catch(() => {});  // warm up in the background so the first reply is quick
+}
+
+function showCrash(m) {
+  const name = m ? m.name : "The model";
+  const lighter = m && m.key !== "llama32-1b" ? " Try Llama 3.2 · 1B, the lightest one." : " Close other apps and try again.";
+  const note = document.createElement("div");
+  note.className = "crash-note";
+  note.innerHTML = `<b></b><span></span><button class="btn">Choose a model</button>`;
+  note.querySelector("b").textContent = `${name} needed more memory than iOS allows a web app, so the app was restarted.`;
+  note.querySelector("span").textContent = lighter;
+  note.querySelector("button").onclick = () => { note.remove(); openModels(); };
+  $("#welcome").after(note);
 }
 
 function showSetup() {

@@ -16,18 +16,26 @@ even in airplane mode.
 - About 1–3 GB of free storage for one model.
 
 ## Models
-| Model | Download | On the PC's RTX 3060 | Notes |
-|---|---|---|---|
-| **Qwen 3.5 · 2B** (recommended) | 1.1 GB | 50 tok/s | Newest; best balance |
-| Llama 3.2 · 3B | 1.8 GB | 55 tok/s | Natural writer |
-| Qwen 3 · 1.7B | 1.0 GB | 61 tok/s | Can "think first" (Settings) |
-| Llama 3.2 · 1B | 0.7 GB | 109 tok/s | Fastest, simpler answers |
-| Qwen 3.5 · 4B | 2.4 GB | – | Smartest; may not fit in the phone's memory |
+iOS gives a web page much less memory than an app (Safari kills the page at roughly 1.5 GB; it shows
+"A problem repeatedly occurred"). Qwen 3.5 2B crashed this way on an iPhone 16, so on iPhones the app now uses a
+2K-token context and recommends the lightest model.
+
+| Model | Download | Memory | On the PC's RTX 3060 | Notes |
+|---|---|---|---|---|
+| **Llama 3.2 · 1B** (recommended) | 0.7 GB | 0.9 GB | 109 tok/s | Fits an iPhone best |
+| Qwen 3 · 1.7B | 1.0 GB | 2.0 GB | 61 tok/s | Smarter, "think first" option; close other apps |
+| Qwen 3.5 · 2B | 1.1 GB | 2.2 GB | 50 tok/s | Crashed on an iPhone 16 |
+| Llama 3.2 · 3B | 1.8 GB | 2.3 GB | 55 tok/s | Likely too big for iPhone |
+| Qwen 3.5 · 4B | 2.4 GB | 3.9 GB | – | Computers only |
+
+**Crash guard:** the app notes when it starts loading a model or writing a reply. If iOS kills the page
+mid-way, the next start shows what happened and doesn't reload that model automatically (models now load on the
+first message, not when the app opens).
 
 An iPhone GPU is roughly 5–7x slower than the 3060, so expect about 8–20 tok/s on the phone. Measure with
 `tools/bench.html` (open it, then run `await bench(["<model id>"])` in the console).
-Left out after testing: Qwen 3.5 0.8B (too weak) and Gemma 3 1B (fails to load in this WebLLM version).
-
+Left out after testing: Qwen 3.5 0.8B (too weak), Qwen 3 0.6B (needs more memory than Llama 1B) and Gemma 3 1B
+(fails to load in this WebLLM version).
 ## Test on this PC
 ```
 python serve.py
