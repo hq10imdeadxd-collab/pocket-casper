@@ -22,7 +22,7 @@ iOS gives a web page much less memory than an app (Safari kills the page at roug
 
 | Model | Download | Memory | On the PC's RTX 3060 | Notes |
 |---|---|---|---|---|
-| **Llama 3.2 · 1B** (recommended) | 0.7 GB | 0.9 GB | 109 tok/s | Fits an iPhone best |
+| **Llama 3.2 · 1B** (recommended) | 0.7 GB | 0.9 GB | 109 tok/s | **Works on iPhone 16: 12.7 tok/s** |
 | Qwen 3 · 1.7B | 1.0 GB | 2.0 GB | 61 tok/s | Smarter, "think first" option; close other apps |
 | Qwen 3.5 · 2B | 1.1 GB | 2.2 GB | 50 tok/s | Crashed on an iPhone 16 |
 | Llama 3.2 · 3B | 1.8 GB | 2.3 GB | 55 tok/s | Likely too big for iPhone |
