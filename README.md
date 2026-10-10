@@ -27,6 +27,7 @@ iOS gives a web page much less memory than an app (Safari kills the page at roug
 | Qwen 3.5 · 2B | 1.1 GB | 2.2 GB | 50 tok/s | Crashed on an iPhone 16 |
 | Llama 3.2 · 3B | 1.8 GB | 2.3 GB | 55 tok/s | Likely too big for iPhone |
 | Qwen 3.5 · 4B | 2.4 GB | 3.9 GB | – | Computers only |
+| SmolLM2 · 360M | 0.27 GB | 0.4 GB | 65 tok/s | Tiny fallback when the others crash |
 
 **Crash guard:** the app notes when it starts loading a model or writing a reply. If iOS kills the page
 mid-way, the next start shows what happened and doesn't reload that model automatically (models now load on the

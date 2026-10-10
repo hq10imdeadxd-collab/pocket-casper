@@ -2,7 +2,7 @@
 import { WebWorkerMLCEngine, prebuiltAppConfig, hasModelInCache, deleteModelAllInfoInCache } from "./vendor/web-llm.js";
 
 const $ = (s) => document.querySelector(s);
-const VERSION = "1.1.0";
+const VERSION = "1.2.0";
 
 // iOS gives a web page far less memory than an app (Safari kills the tab above roughly 1.5 GB, which shows up as
 // "A problem repeatedly occurred"). On iOS: a smaller context window (less memory for the conversation) and
@@ -25,7 +25,9 @@ const MODELS = [
   { key: "qwen35-2b", base: "Qwen3.5-2B", name: "Qwen 3.5 · 2B", note: "Newest, but crashed on an iPhone 16 (too little memory for web apps)", big: true },
   { key: "llama32-3b", base: "Llama-3.2-3B-Instruct", name: "Llama 3.2 · 3B", note: "Natural writer; likely too big for an iPhone", big: true },
   { key: "qwen35-4b", base: "Qwen3.5-4B", name: "Qwen 3.5 · 4B", note: "Smartest; too big for phones (computers only)", big: true },
+  { key: "smollm2-360m", base: "SmolLM2-360M-Instruct", name: "SmolLM2 · 360M", note: "Tiny (0.4 GB of memory): basic chat, for when the others crash", f16only: true },
 ];
+let gpuInfo = "";  // shown in Settings to help diagnose phones
 let f16 = true;  // whether the GPU supports 16-bit floats (faster, smaller); otherwise use the f32 builds
 const modelId = (m) => `${m.base}-${f16 ? "q4f16_1" : "q4f32_1"}-MLC`;
 const record = (m) => prebuiltAppConfig.model_list.find((r) => r.model_id === modelId(m));
@@ -421,7 +423,7 @@ async function openSettings() {
   const persisted = await navigator.storage?.persisted?.().catch(() => false);
   $("#s-persist").textContent = persisted ? "Protected: iOS won't clear the downloaded model"
     : "Not protected yet: add the app to the Home Screen so iOS keeps the model";
-  $("#s-about").textContent = `Pocket Casper ${VERSION} · runs on this device with WebGPU${f16 ? "" : " (32-bit mode)"}. Chats never leave the phone.`;
+  $("#s-about").textContent = `Pocket Casper ${VERSION} · runs on this device with WebGPU${f16 ? "" : " (32-bit mode)"}. Chats never leave the phone. ${gpuInfo}`;
   $("#settings").classList.remove("hidden");
 }
 function closeSheets() { document.querySelectorAll(".sheet").forEach((s) => s.classList.add("hidden")); }
@@ -478,6 +480,8 @@ async function start() {
   const adapter = await navigator.gpu.requestAdapter().catch(() => null);
   if (!adapter) return noWebGPU("Couldn't access the GPU.");
   f16 = adapter.features.has("shader-f16");
+  gpuInfo = `GPU: ${adapter.info?.vendor || "?"} ${adapter.info?.architecture || ""} · 16-bit: ${f16 ? "yes" : "no"} · ` +
+    `max buffer ${Math.round(adapter.limits.maxBufferSize / 1048576)} MB · storage binding ${Math.round(adapter.limits.maxStorageBufferBindingSize / 1048576)} MB`;
 
   // Did the last load or reply crash the page? (See markRisky.)
   const crashed = load("pc.inflight", null);
@@ -486,6 +490,7 @@ async function start() {
     crashes[crashed.model] = (crashes[crashed.model] || 0) + 1;
     save("pc.crashes", crashes);
     const cm = MODELS.find((x) => x.key === crashed.model);
+    if (settings.model === crashed.model) { settings.model = null; save("pc.settings", settings); }  // don't crash again on the next message
     showCrash(cm);
   }
 
