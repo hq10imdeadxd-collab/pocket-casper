@@ -22,7 +22,8 @@ iOS gives a web page much less memory than an app (Safari kills the page at roug
 
 | Model | Download | Memory | On the PC's RTX 3060 | Notes |
 |---|---|---|---|---|
-| **Llama 3.2 · 1B** (recommended) | 0.7 GB | 0.9 GB | 109 tok/s | **Works on iPhone 16: 12.7 tok/s** |
+| **Llama 3.2 · 1B** (recommended) | 0.7 GB | 0.9 GB | 109 tok/s | **Works on iPhone 16: 12.7 tok/s**; good at simple maths |
+| **Gemma 3 · 1B** | 0.56 GB | 0.7 GB | 39–62 tok/s | Best at following a conversation; weak at maths |
 | Qwen 3 · 1.7B | 1.0 GB | 2.0 GB | 61 tok/s | Smarter, "think first" option; close other apps |
 | Qwen 3.5 · 2B | 1.1 GB | 2.2 GB | 50 tok/s | Crashed on an iPhone 16 |
 | Llama 3.2 · 3B | 1.8 GB | 2.3 GB | 55 tok/s | Likely too big for iPhone |
@@ -35,8 +36,10 @@ first message, not when the app opens).
 
 An iPhone GPU is roughly 5–7x slower than the 3060, so expect about 8–20 tok/s on the phone. Measure with
 `tools/bench.html` (open it, then run `await bench(["<model id>"])` in the console).
-Left out after testing: Qwen 3.5 0.8B (too weak), Qwen 3 0.6B (needs more memory than Llama 1B) and Gemma 3 1B
-(fails to load in this WebLLM version).
+Left out after testing: Qwen 3.5 0.8B (too weak) and Qwen 3 0.6B (needs more memory than Llama 1B).
+Gemma 3 1B needs a fix: WebLLM 0.2.85's config sets both a 4K context and a 512 sliding window, so the app loads it
+with `context_window_size: -1, attention_sink_size: 0`. On iPhones the models over ~1.5 GB are hidden behind a link.
+To test the iPhone behaviour on a computer: `localStorage.setItem("pc.forceIOS", "1")` and reload.
 ## Test on this PC
 ```
 python serve.py

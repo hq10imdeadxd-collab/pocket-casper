@@ -2,13 +2,14 @@
 import { WebWorkerMLCEngine, prebuiltAppConfig, hasModelInCache, deleteModelAllInfoInCache } from "./vendor/web-llm.js";
 
 const $ = (s) => document.querySelector(s);
-const VERSION = "1.2.0";
+const VERSION = "1.3.0";
 
 // iOS gives a web page far less memory than an app (Safari kills the tab above roughly 1.5 GB, which shows up as
 // "A problem repeatedly occurred"). On iOS: a smaller context window (less memory for the conversation) and
 // the light models first.
 const IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
-  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) ||
+  localStorage.getItem("pc.forceIOS") === "1";  // lets a desktop browser test the iPhone behaviour
 const CONTEXT_TOKENS = IS_IOS ? 2048 : 4096;
 const REPLY_TOKENS = IS_IOS ? 600 : 1024;
 
@@ -17,17 +18,21 @@ const REPLY_TOKENS = IS_IOS ? 600 : 1024;
 // Llama 3.2 3B 55, Qwen 3.5 2B 50. A phone GPU has roughly 1/6 of that memory bandwidth, so expect ~8–20 tok/s.
 // Memory (WebLLM's estimate at a 4K context): Llama 1B 0.9 GB, Qwen 3 1.7B 2.0 GB, Qwen 3.5 2B and Llama 3B
 // 2.2 GB, Qwen 3.5 4B 3.9 GB. On an iPhone 16, Qwen 3.5 2B crashed Safari ("A problem repeatedly occurred").
-// Left out: Qwen 3.5 0.8B (too weak: rambled off-topic in tests), Qwen 3 0.6B (needs more memory than Llama 1B)
-// and Gemma 3 1B (WebLLM 0.2.85's config for it fails to load: sliding-window conflict).
+// Left out: Qwen 3.5 0.8B (too weak: rambled off-topic in tests) and Qwen 3 0.6B (needs more memory than Llama 1B).
 const MODELS = [
-  { key: "llama32-1b", base: "Llama-3.2-1B-Instruct", name: "Llama 3.2 · 1B", note: "Lightest and fastest: the one that fits an iPhone best", rec: true },
+  { key: "llama32-1b", base: "Llama-3.2-1B-Instruct", name: "Llama 3.2 · 1B", note: "Fast and reliable; good at simple maths, forgets details sooner", rec: true, tag: "Works on iPhone 16" },
+  // Gemma 3's prebuilt config sets a 4K context AND a 512-token sliding window, which WebLLM rejects; using only
+  // the sliding window (as the model was built) fixes it. In tests it followed conversations best of the 1B models.
+  { key: "gemma3-1b", base: "gemma3-1b-it", name: "Gemma 3 · 1B", note: "Best conversationalist that fits; weaker at maths",
+    tag: "Best for chatting", chatOpts: { context_window_size: -1, attention_sink_size: 0 } },
   { key: "qwen3-1.7b", base: "Qwen3-1.7B", name: "Qwen 3 · 1.7B", note: "Smarter, can think first. Close other apps before using it", think: true, big: true },
   { key: "qwen35-2b", base: "Qwen3.5-2B", name: "Qwen 3.5 · 2B", note: "Newest, but crashed on an iPhone 16 (too little memory for web apps)", big: true },
   { key: "llama32-3b", base: "Llama-3.2-3B-Instruct", name: "Llama 3.2 · 3B", note: "Natural writer; likely too big for an iPhone", big: true },
   { key: "qwen35-4b", base: "Qwen3.5-4B", name: "Qwen 3.5 · 4B", note: "Smartest; too big for phones (computers only)", big: true },
   { key: "smollm2-360m", base: "SmolLM2-360M-Instruct", name: "SmolLM2 · 360M", note: "Tiny (0.4 GB of memory): basic chat, for when the others crash", f16only: true },
 ];
-let gpuInfo = "";  // shown in Settings to help diagnose phones
+let gpuInfo = "";
+let showBig = false;  // iPhone: models too big for Safari's memory limit are hidden until asked for  // shown in Settings to help diagnose phones
 let f16 = true;  // whether the GPU supports 16-bit floats (faster, smaller); otherwise use the f32 builds
 const modelId = (m) => `${m.base}-${f16 ? "q4f16_1" : "q4f32_1"}-MLC`;
 const record = (m) => prebuiltAppConfig.model_list.find((r) => r.model_id === modelId(m));
@@ -83,7 +88,7 @@ async function loadModel(m) {
           } });
       }
       markRisky("load", m);  // if Safari kills the page now, the next start knows why (see start())
-      await engine.reload(id, IS_IOS ? { context_window_size: CONTEXT_TOKENS } : undefined);
+      await engine.reload(id, m.chatOpts || (IS_IOS ? { context_window_size: CONTEXT_TOKENS } : undefined));
       clearRisky();
       loadedId = id;
       settings.model = m.key;
@@ -353,13 +358,14 @@ const gb = (b) => (b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : `${Math.round(b / 1
 async function renderModels() {
   const list = $("#model-list");
   list.innerHTML = "";
-  for (const m of available()) {
+  const hidden = IS_IOS && !showBig ? available().filter((m) => m.big) : [];
+  for (const m of available().filter((x) => !hidden.includes(x))) {
     const id = modelId(m);
     const cached = await hasModelInCache(id).catch(() => false);
     const isCurrent = settings.model === m.key;
     const card = document.createElement("div");
     card.className = "model" + (isCurrent ? " current" : "");
-    card.innerHTML = `<div class="model-top"><b></b>${m.rec ? '<span class="tag rec">Recommended</span>' : ""}` +
+    card.innerHTML = `<div class="model-top"><b></b>${m.tag ? `<span class="tag${m.rec ? " rec" : ""}">${m.tag}</span>` : ""}` +
       `${cached ? '<span class="tag">Downloaded</span>' : ""}${IS_IOS && m.big ? '<span class="tag warn">May crash</span>' : ""}</div>` +
       `<small class="note"></small><small class="size"></small><small class="crashed"></small>` +
       `<div class="model-actions"></div>`;
@@ -397,6 +403,13 @@ async function renderModels() {
       actions.append(del);
     }
     list.append(card);
+  }
+  if (hidden.length) {
+    const more = document.createElement("button");
+    more.className = "btn show-big";
+    more.textContent = `Show ${hidden.length} bigger models (they crash on iPhone)`;
+    more.onclick = () => { showBig = true; renderModels(); };
+    list.append(more);
   }
   showStorage();
 }

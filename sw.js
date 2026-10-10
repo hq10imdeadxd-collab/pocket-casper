@@ -1,6 +1,6 @@
 // Offline support for the app itself. The model files are cached separately by WebLLM ("webllm/..." caches),
 // so this worker only handles this site's own files and never touches those caches.
-const VERSION = "pc-v1.2.0";
+const VERSION = "pc-v1.3.0";
 const SHELL = [
   "./", "index.html", "style.css", "app.js", "worker.js", "manifest.webmanifest",
   "vendor/web-llm.js", "vendor/marked.min.js", "vendor/purify.min.js",
