@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Pocket Casper bench</title>
+<pre id="out">Open the console: await bench(["Llama-3.2-1B-Instruct-q4f16_1-MLC"])</pre>
+<script type="module">
+  // Developer tool: tokens/second of each model in this browser (same engine as the app, no service worker).
+  import { CreateMLCEngine } from "../vendor/web-llm.js";
+  const out = document.getElementById("out");
+  window.bench = async (ids, prompt = "Explain in about 120 words why the sky is blue.") => {
+    const results = {};
+    for (const id of ids) {
+      const t0 = performance.now();
+      const engine = await CreateMLCEngine(id);
+      const load = (performance.now() - t0) / 1000;
+      const runs = [];
+      for (let i = 0; i < 2; i++) {  // the first run includes one-time GPU warm-up
+        const r = await engine.chat.completions.create({
+          messages: [{ role: "user", content: prompt }], max_tokens: 200, temperature: 0,
+          ...(id.startsWith("Qwen3") ? { extra_body: { enable_thinking: false } } : {}),
+        });
+        runs.push(r.usage.extra.decode_tokens_per_s);
+      }
+      results[id] = { load_s: +load.toFixed(1), tok_s: +runs[1].toFixed(1), first_run: +runs[0].toFixed(1) };
+      out.textContent = JSON.stringify(results, null, 1);
+      await engine.unload();
+    }
+    return results;
+  };
+</script>

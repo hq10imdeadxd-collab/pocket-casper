@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <title>Pocket Casper</title>
+  <meta name="description" content="A private AI chat that runs entirely on your phone, offline.">
+  <meta name="theme-color" content="#1e1e1e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Casper">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" href="icons/favicon-32.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <button class="icon-btn" id="menu-btn" aria-label="Chats" data-icon="menu"></button>
+    <button id="model-btn" aria-label="Model">
+      <span class="dot" id="model-dot"></span><span id="model-name">No model</span>
+    </button>
+    <button class="icon-btn" id="new-btn" aria-label="New chat" data-icon="new"></button>
+  </header>
+
+  <main id="chat">
+    <div class="column">
+      <section id="welcome">
+        <div class="logo" data-logo></div>
+        <h1>Pocket Casper</h1>
+        <p id="welcome-sub">Private AI that runs on this phone. No internet needed once a model is downloaded.</p>
+      </section>
+      <div id="messages"></div>
+    </div>
+  </main>
+
+  <footer>
+    <div class="column">
+      <form id="composer" autocomplete="off">
+        <textarea id="input" rows="1" placeholder="Message" enterkeyhint="send"></textarea>
+        <button id="send" type="submit" aria-label="Send" data-icon="up"></button>
+      </form>
+      <div id="status" class="hidden"></div>
+    </div>
+  </footer>
+
+  <!-- chats drawer -->
+  <div id="scrim" class="hidden"></div>
+  <aside id="drawer" aria-hidden="true">
+    <div class="drawer-head">
+      <span class="logo small" data-logo></span><b>Chats</b>
+      <button class="icon-btn" id="drawer-new" aria-label="New chat" data-icon="new"></button>
+    </div>
+    <div id="chat-list"></div>
+    <button class="drawer-row" id="open-models"><span data-icon="chip"></span>Models</button>
+    <button class="drawer-row" id="open-settings"><span data-icon="gear"></span>Settings</button>
+  </aside>
+
+  <!-- models sheet -->
+  <section class="sheet hidden" id="models" role="dialog" aria-label="Models">
+    <div class="sheet-card">
+      <div class="sheet-head"><h2>Models</h2><button class="icon-btn" data-close aria-label="Close" data-icon="x"></button></div>
+      <p class="hint">Download once on Wi-Fi. After that the model works with no connection at all.</p>
+      <div id="model-list"></div>
+      <div id="storage" class="hint"></div>
+    </div>
+  </section>
+
+  <!-- settings sheet -->
+  <section class="sheet hidden" id="settings" role="dialog" aria-label="Settings">
+    <div class="sheet-card">
+      <div class="sheet-head"><h2>Settings</h2><button class="icon-btn" data-close aria-label="Close" data-icon="x"></button></div>
+      <label class="row"><span>Think before answering<small>Smarter on tricky questions, slower. Qwen 3 models only</small></span>
+        <span class="switch"><input type="checkbox" id="s-think"><i></i></span></label>
+      <label class="row col"><span>Creativity <b id="s-temp-v"></b><small>Lower = focused, higher = more varied</small></span>
+        <input type="range" id="s-temp" min="0" max="1.2" step="0.05"></label>
+      <label class="row col"><span>Personality<small>Instructions the model follows in every chat</small></span>
+        <textarea id="s-system" rows="4"></textarea></label>
+      <div class="row"><span>Offline storage<small id="s-persist"></small></span></div>
+      <button class="btn danger" id="s-clear">Delete all chats</button>
+      <p class="hint" id="s-about"></p>
+    </div>
+  </section>
+
+  <div id="toast" class="hidden"></div>
+  <script src="vendor/marked.min.js"></script>
+  <script src="vendor/purify.min.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
